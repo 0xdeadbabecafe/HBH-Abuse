@@ -124,9 +124,7 @@ class HBHToFile:
 class ProxySettings:
     def find_proxy_arg(self, proxy, burp_cert):
         self.proxy = proxy
-        print(self.proxy)
         self.burp_cert = burp_cert
-        print(self.burp_cert)
         if self.burp_cert != False:
             try:
                 path.exists(self.proxy)
@@ -301,7 +299,6 @@ if __name__ == '__main__':
         
     hbh = HBHHeaders(args.hbh_header, args.headers, args.file)
     header_list = hbh.clean_header_lists()
-    print(len(header_list))
     while True:
         if len(header_list)==count:
             break
