@@ -1,9 +1,6 @@
 # HBH-Abuse
 
 
-***
-
-
 Credit to [ndavison](https://gist.github.com/ndavison/298d11b3a77b97c908d63a345d3c624d) for his original work and great [article](https://nathandavison.com/blog/abusing-http-hop-by-hop-request-headers) talking about Hop-By-Hop Header abuse.
 
 
