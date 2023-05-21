@@ -122,33 +122,50 @@ class HBHToFile:
         self.hbhout.write(self.outro_1())
 
 class ProxySettings:
-    def find_proxy_arg(self, proxy, burp_cert):
+    def find_proxy_arg(self, proxy, only_findings_flag):
         self.proxy = proxy
-        self.burp_cert = burp_cert
-        if self.burp_cert != False:
-            try:
-                path.exists(self.proxy)
-            except FileNotFoundError:
-                print("File name does not exist or isn't formatted; trying to continue in no-verify mode")
-                return 'no-verify'
-            environ["REQUESTS_CA_BUNDLE"] = self.burp_cert
-        self.proxy = self.proxy.replace('-','_')
-        return getattr(self, 'proxy_' + str(self.proxy), lambda: default)()
-
-    def proxy_no_verify(self):
-        return 'no-verify'
-
-    def proxy_findings(self):
-        return 'findings'
+        self.only_findings_flag = only_findings_flag
+        if self.proxy != False and self.proxy != 'no-verify' and self.only_findings_flag == False:
+            self.proxy_all()
+        if self.proxy != False and self.proxy != 'no-verify' and self.only_findings_flag == True:
+            self.proxy_findings()
+        if self.proxy == 'no-verify':
+            self.proxy_no_verify()
+        else:
+            self.proxy_no_proxy()
+        return self.proxies, self.verify
         
     def proxy_all(self):
-        self.only_findings()
+        try:
+            path.exists(self.proxy)
+        except FileNotFoundError:
+            print("File name does not exist; trying to continue in no-verify mode")
+            self.proxy_no_verify()
+        environ["REQUESTS_CA_BUNDLE"] = self.proxy
         environ["HTTP_PROXY"] = "127.0.0.1:8080"
         environ["HTTPS_PROXY"] = "127.0.0.1:8080"
-        return 'all'
-    
+        self.proxies = {"http": "", "https": ""}
+        self.verify = True
+        
+    def proxy_findings(self):
+        try:
+            path.exists(self.proxy)
+        except FileNotFoundError:
+            print("File name does not exist; trying to continue in no-verify mode")
+            self.proxy_no_verify()
+        self.read_burp_cert = open(self.proxy,'r')
+        self.ca_contents = read_proxy.read()
+        self.environ["REQUESTS_CA_BUNDLE"] = ca_contents
+        self.proxies = {"http": "", "https": ""}
+        self.verify = True
+        
+    def proxy_no_verify(self):
+        self.proxies = {"http": "http://127.0.0.1:8080", "https": "http://127.0.0.1:8080"}
+        self.verify = False
+        
     def proxy_no_proxy(self):
-        return 'no-proxy'
+        self.proxies = {"http": "", "https": ""}
+        self.verify = True
 
 class HBHHeaders:
     def __init__(self, hbh_header, cli_headers, file_headers):
@@ -197,12 +214,6 @@ class HBHRequests:
             self.data=self.data.replace('\\n','\n')
         else:
             self.data = ''
-        if self.proxies != 'no-verify':
-            self.proxies = {"http": "", "https": ""}
-            self.verify = True
-        else:
-            self.proxies = {"http": "http://127.0.0.1:8080", "https": "http://127.0.0.1:8080"}
-            self.verify = False
 
     def cache_bust_param(self):
         letters = string.ascii_lowercase
@@ -214,7 +225,7 @@ class HBHRequests:
     def first_request(self):
         try:
             params_1 = self.cache_bust_param()
-            request_1 = requests.request(self.verb, self.url, params=params_1, data=self.data, proxies=self.proxies, allow_redirects=False, verify=self.verify)
+            request_1 = requests.request(self.verb, self.url, params=params_1, data=self.data, proxies=self.proxies[0], allow_redirects=False, verify=self.proxies[1])
             sleep(self.time/1000)
             return request_1
         except requests.exceptions.ConnectionError as e:
@@ -225,7 +236,7 @@ class HBHRequests:
         self.header = header
         try:
             self.params_2 = self.cache_bust_param()
-            request_2 = requests.request(self.verb, self.url, params=self.params_2, headers=self.header, data=self.data, proxies=self.proxies, allow_redirects=False, verify=self.verify)
+            request_2 = requests.request(self.verb, self.url, params=self.params_2, headers=self.header, data=self.data, proxies=self.proxies[0], allow_redirects=False, verify=self.proxies[1])
             sleep(self.time/1000)
             return request_2
         except requests.exceptions.ConnectionError as e:
@@ -234,7 +245,7 @@ class HBHRequests:
 
     def cache_request(self):
         try:
-            request_3 = requests.request(self.verb, self.url, params=self.params_2, data=self.data, proxies=self.proxies, allow_redirects=False, verify=self.verify)
+            request_3 = requests.request(self.verb, self.url, params=self.params_2, data=self.data, proxies=self.proxies[0], allow_redirects=False, verify=self.proxies[1])
             sleep(self.time/1000)
             return request_3
         except requests.exceptions.ConnectionError as e:
@@ -258,8 +269,8 @@ def get_args():
     parser.add_argument("-x", "--headers", nargs='?', const="X-Forwarded-For,X-Forwarded-Host,X-Real-IP", default=False, help="\tA comma separated list of headers to add as hop-by-hop do not add spaces!")
     parser.add_argument("-c", "--cache-test", action="store_true", help="\tTest for cache poisoning")
     parser.add_argument("-v", "--verbose", action="store_true", help="\tMore output")
-    parser.add_argument("-p", "--proxy", nargs='?', const="findings", default="no-proxy", help="\tArguments:\nfindings: only potential findings will be passed\nall: all traffic will be proxied through using burp's cert\nno-verify: all traffic will be proxied through without using burp's cert", type=str.lower)
-    parser.add_argument("-bc", "--burp-cert", default=False, help="\tprovide the path to your burp certificate (.pem format)")
+    parser.add_argument("-p", "--proxy", nargs='?', const="no-verify", default=False, help="Proxying requests through Burp. Provide the location of your Burp CA if you do not want to get no-verify errors", type=str.lower)
+    parser.add_argument("-ofp", "--only-findings-proxied", nargs='?', const=True, default=False, help="Proxying only potential findings through burp", type=str.lower)
     parser.add_argument("-hb", "--hbh-header", default="Connection", help="\tThe HBHheader to be injected (default is Connection)", type=str)
     parser.add_argument("-f", "--file", default=False, help="\tInput file to be read from")
     parser.add_argument("-t", "--timing", default=500, help="\tDelay between requests (default is 500ms)", type=int)
@@ -278,7 +289,7 @@ if __name__ == '__main__':
     print(ascii_art)
     #check which proxy arg is set if any
     proxy = ProxySettings()
-    prxy = proxy.find_proxy_arg(args.proxy, args.burp_cert)
+    prxy = proxy.find_proxy_arg(args.proxy, args.only_findings_proxied)
     
     if args.verbose:
         print("Trying %s" % (args.url))
@@ -315,12 +326,12 @@ if __name__ == '__main__':
                     print(f'{bcolors.OKCYAN}+++Writing %s\'s request and response with hop-by-hop header "%s" to %s+++{bcolors.ENDC}' % (res2.request.url, line, args.output ))
                 hbh_write_2 = HBHToFile(res1, 1, args.output, args.url, line)
                 hbh_write_2.write_req()
-            if prxy == 'findings':
+            if args.only_findings_flag:
                 potential_finding_to_proxy()
                 
         if len(res1.content) != len(res2.content) and res1.status_code == res2.status_code:
             print(f'{bcolors.WARNING}+%s was %s in response size, but was %s with the hop-by-hop header of "%s"+{bcolors.ENDC}' % (res1.request.url, len(res1.content), len(res2.content), line))
-            if prxy == 'findings':
+            if args.only_findings_flag:
                 potential_finding_to_proxy()
         # if enabled, run the cache poison test by quering the HbH request's cache buster without the HbH headers and comparing status codes
         if args.cache_test:
@@ -333,7 +344,7 @@ if __name__ == '__main__':
                 
             if res3.status_code == res2.status_code:
                 print(f'{bcolors.WARNING}+++%s poisoned?+++{bcolors.ENDC}' % (res3.request.url))
-                if prxy == 'findings':
+                if args.only_findings_flag:
                     potential_finding_to_proxy()
             else:
                 print('No poisoning detected')
@@ -341,9 +352,8 @@ if __name__ == '__main__':
             if args.verbose:
                 print('No change detected requesting "%s" with the hop-by-hop headers "%s" \nResponse: [%s] Content-Length: [%s]' % (res2.request.url, line, res2.status_code, len(res2.content)))
         count += 1
-    #removes env variables so you aren't stuck with everything going through burp and forgetting
-    if prxy == 'all' or prxy == 'findings':
-        environ.pop("REQUESTS_CA_BUNDLE", None)
-        environ.pop("HTTP_PROXY", None)
-        environ.pop("HTTPS_PROXY", None)
+#removes env variables so you aren't stuck with everything going through burp and forgetting
+    environ.pop("REQUESTS_CA_BUNDLE", None)
+    environ.pop("HTTP_PROXY", None)
+    environ.pop("HTTPS_PROXY", None)
     exit(1)
