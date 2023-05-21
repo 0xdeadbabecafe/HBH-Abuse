@@ -21,6 +21,7 @@ from os import path
 from os import environ
 from argparse import ArgumentParser
 from urllib.parse import urlparse
+import urllib3
 
 ascii_art = (r'''
 
@@ -148,18 +149,19 @@ class ProxySettings:
         self.verify = True
         
     def proxy_findings(self):
+        print("shouldn't print")
         try:
             path.exists(self.proxy)
         except FileNotFoundError:
             print("File name does not exist; trying to continue in no-verify mode")
             self.proxy_no_verify()
-        self.read_burp_cert = open(self.proxy,'r')
-        self.ca_contents = read_proxy.read()
-        self.environ["REQUESTS_CA_BUNDLE"] = ca_contents
+        environ["REQUESTS_CA_BUNDLE"] = self.proxy
         self.proxies = {"http": "", "https": ""}
         self.verify = True
         
     def proxy_no_verify(self):
+        #remove annoying warnings
+        urllib3.disable_warnings()
         self.proxies = {"http": "http://127.0.0.1:8080", "https": "http://127.0.0.1:8080"}
         self.verify = False
         
